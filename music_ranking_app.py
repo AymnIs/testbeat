@@ -9,7 +9,7 @@ if "group_size" not in st.session_state:
     st.session_state.group_size = 5
 if "current_group" not in st.session_state:
     st.session_state.current_group = []
-if "ranked_group" not in st.sessionState:
+if "ranked_group" not in st.session_state:  # Fixed typo here
     st.session_state.ranked_group = []
 if "scores" not in st.session_state:
     st.session_state.scores = {}
