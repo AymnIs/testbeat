@@ -58,49 +58,20 @@ def small_batch_ranking(songs, group_size=5, max_rounds=20, confidence_threshold
     for group in groups:
         st.write("Rank these songs from best to worst:")
         
-        # Use a drag-and-drop HTML widget
-        html_content = f"""
-        <div id="sortable-list">
-            {''.join([f'<div class="item" draggable="true">{song}</div>' for song in group])}
-        </div>
-        <script>
-            const items = document.querySelectorAll('.item');
-            items.forEach(item => {{
-                item.addEventListener('dragstart', () => {{
-                    setTimeout(() => item.classList.add('dragging'), 0);
-                }});
-                item.addEventListener('dragend', () => item.classList.remove('dragging'));
-            }});
-            const list = document.querySelector('#sortable-list');
-            list.addEventListener('dragover', e => {{
-                e.preventDefault();
-                const dragging = document.querySelector('.dragging');
-                const afterElement = getDragAfterElement(list, e.clientY);
-                if (afterElement == null) {{
-                    list.appendChild(dragging);
-                }} else {{
-                    list.insertBefore(dragging, afterElement);
-                }}
-            }});
-            function getDragAfterElement(container, y) {{
-                const draggableElements = [...container.querySelectorAll('.item:not(.dragging)')];
-                return draggableElements.reduce((closest, child) => {{
-                    const box = child.getBoundingClientRect();
-                    const offset = y - box.top - box.height / 2;
-                    if (offset < 0 && offset > closest.offset) {{
-                        return {{ offset: offset, element: child }};
-                    }} else {{
-                        return closest;
-                    }}
-                }}, {{ offset: Number.NEGATIVE_INFINITY }}).element;
-            }}
-        </script>
-        """
-        st.components.v1.html(html_content, height=300)
+        remaining_group = group[:]  # Copy the group to avoid modifying the original
+        ranked_group = []
         
-        # Get ranked order from user input
-        ranked_group = st.text_input(f"Enter the ranked order of songs (comma-separated):", value=",".join(group))
-        ranked_group = [song.strip() for song in ranked_group.split(",") if song.strip()]
+        while len(remaining_group) > 1:
+            # Ask the user to select their favorite song from the remaining group
+            selected_song = st.selectbox(
+                f"Select your favorite song from the group: {remaining_group}",
+                options=remaining_group
+            )
+            ranked_group.append(selected_song)
+            remaining_group.remove(selected_song)
+        
+        # Add the last remaining song to the ranked group
+        ranked_group.append(remaining_group[0])
         
         # Update scores using Borda count
         for i, song in enumerate(ranked_group):
