@@ -9,7 +9,7 @@ if "group_size" not in st.session_state:
     st.session_state.group_size = 5
 if "current_group" not in st.session_state:
     st.session_state.current_group = []
-if "ranked_group" not in st.session_state:  # Fixed typo here
+if "ranked_group" not in st.session_state:
     st.session_state.ranked_group = []
 if "scores" not in st.session_state:
     st.session_state.scores = {}
@@ -21,6 +21,10 @@ if "round_num" not in st.session_state:
     st.session_state.round_num = 0
 if "final_ranking" not in st.session_state:
     st.session_state.final_ranking = None
+if "groups" not in st.session_state:  # Ensure groups are initialized
+    st.session_state.groups = []
+if "current_group_index" not in st.session_state:  # Ensure current_group_index is initialized
+    st.session_state.current_group_index = 0
 
 # Default list of 10 random songs for aesthetics
 DEFAULT_SONGS = [
