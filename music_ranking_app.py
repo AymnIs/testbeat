@@ -1,6 +1,21 @@
 import streamlit as st
 import random
 import statistics
+from streamlit_sortables import sort_items
+
+# Default list of 10 random songs for aesthetics
+DEFAULT_SONGS = [
+    "Bohemian Rhapsody - Queen",
+    "Stairway to Heaven - Led Zeppelin",
+    "Hotel California - Eagles",
+    "Imagine - John Lennon",
+    "Like a Rolling Stone - Bob Dylan",
+    "Smells Like Teen Spirit - Nirvana",
+    "Hey Jude - The Beatles",
+    "Sweet Child O' Mine - Guns N' Roses",
+    "I Want to Hold Your Hand - The Beatles",
+    "Purple Haze - Jimi Hendrix"
+]
 
 def small_batch_ranking(songs, group_size=5, max_rounds=20, confidence_threshold=0.9):
     """
@@ -12,6 +27,8 @@ def small_batch_ranking(songs, group_size=5, max_rounds=20, confidence_threshold
     history = {song: [] for song in songs}  # To track score history for variance calculation
     
     for round_num in range(max_rounds):
+        st.write(f"--- Round {round_num + 1} ---")
+        
         # Adaptive sampling: Prioritize songs with high uncertainty or close scores
         sorted_songs = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
         groups = []
@@ -24,17 +41,10 @@ def small_batch_ranking(songs, group_size=5, max_rounds=20, confidence_threshold
         
         # Simulate user rankings for each group
         for group in groups:
-            st.write(f"Rank these songs from best to worst:")
-            ranked_group = st.multiselect(
-                "Select songs in order (best first):",
-                options=group,
-                default=[]
-            )
+            st.write("Rank these songs from best to worst:")
             
-            # Ensure valid input
-            if len(ranked_group) != len(group):
-                st.error("Please rank all songs in the group.")
-                return None, None, None
+            # Use streamlit_sortables for drag-and-drop ranking
+            ranked_group = sort_items(group)
             
             # Update scores using Borda count
             for i, song in enumerate(ranked_group):
@@ -64,18 +74,30 @@ def small_batch_ranking(songs, group_size=5, max_rounds=20, confidence_threshold
 
 # Streamlit App
 def main():
-    st.title("Music Ranking App")
+    st.title("🎵 Music Ranking App 🎵")
     st.write("This app ranks your favorite songs using small-batch comparisons!")
     
     # Input: Number of songs
     n = st.number_input("Enter the number of songs to rank:", min_value=2, value=10, step=1)
-    songs = [f"Song{i+1}" for i in range(n)]
+    
+    # Use default songs if n <= 10, otherwise generate random song names
+    if n <= 10:
+        songs = DEFAULT_SONGS[:n]
+    else:
+        songs = [f"Song{i+1}" for i in range(n)]
+    
+    # Display the list of songs
+    st.write("**Songs to Rank:**")
+    st.write(songs)
     
     # Input: Group size
     group_size = st.number_input("Enter the group size for comparisons:", min_value=2, value=5, step=1)
     
     # Start ranking process
     if st.button("Start Ranking"):
+        st.write("Let's get started! Please rank the songs in each group.")
+        
+        # Run the ranking algorithm
         ranking, scores, uncertainties = small_batch_ranking(
             songs,
             group_size=group_size,
@@ -84,7 +106,7 @@ def main():
         )
         
         if ranking:
-            st.write("\nFinal Ranking:")
+            st.write("\n🎉 **Final Ranking:** 🎉")
             for i, song in enumerate(ranking, start=1):
                 st.write(f"{i}. {song} (Score: {scores[song]:.2f}, Uncertainty: {uncertainties[song]:.2f})")
 
