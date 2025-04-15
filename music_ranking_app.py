@@ -2,6 +2,18 @@ import streamlit as st
 import random
 import statistics
 
+# Initialize session state
+if "scores" not in st.session_state:
+    st.session_state.scores = {}
+if "uncertainties" not in st.session_state:
+    st.session_state.uncertainties = {}
+if "history" not in st.session_state:
+    st.session_state.history = {}
+if "round_num" not in st.session_state:
+    st.session_state.round_num = 0
+if "final_ranking" not in st.session_state:
+    st.session_state.final_ranking = None
+
 # Default list of 10 random songs for aesthetics
 DEFAULT_SONGS = [
     "Bohemian Rhapsody - Queen",
@@ -20,97 +32,102 @@ def small_batch_ranking(songs, group_size=5, max_rounds=20, confidence_threshold
     """
     Rank songs using small-batch comparisons with adaptive sampling and confidence-based stopping.
     """
-    # Initialize scores and uncertainties
-    scores = {song: 0 for song in songs}
-    uncertainties = {song: float('inf') for song in songs}
-    history = {song: [] for song in songs}  # To track score history for variance calculation
-    
-    for round_num in range(max_rounds):
-        st.write(f"--- Round {round_num + 1} ---")
+    # Initialize scores and uncertainties (only on first run)
+    if not st.session_state.scores:
+        st.session_state.scores = {song: 0 for song in songs}
+    if not st.session_state.uncertainties:
+        st.session_state.uncertainties = {song: float('inf') for song in songs}
+    if not st.session_state.history:
+        st.session_state.history = {song: [] for song in songs}
+
+    # Stop if final ranking is already calculated
+    if st.session_state.final_ranking:
+        return st.session_state.final_ranking
+
+    # Adaptive sampling: Prioritize songs with high uncertainty or close scores
+    sorted_songs = sorted(st.session_state.scores.keys(), key=lambda x: st.session_state.scores[x], reverse=True)
+    groups = []
+
+    for i in range(0, len(sorted_songs), group_size):
+        group = sorted_songs[i:i + group_size]
+        # Shuffle to mix high-uncertainty and close-scored songs
+        random.shuffle(group)
+        groups.append(group)
+
+    # Simulate user rankings for each group
+    for group in groups:
+        st.write("Rank these songs from best to worst:")
         
-        # Adaptive sampling: Prioritize songs with high uncertainty or close scores
-        sorted_songs = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-        groups = []
-        
-        for i in range(0, len(sorted_songs), group_size):
-            group = sorted_songs[i:i + group_size]
-            # Shuffle to mix high-uncertainty and close-scored songs
-            random.shuffle(group)
-            groups.append(group)
-        
-        # Simulate user rankings for each group
-        for group in groups:
-            st.write("Rank these songs from best to worst:")
-            
-            # Use a drag-and-drop HTML widget
-            html_content = f"""
-            <div id="sortable-list">
-                {''.join([f'<div class="item" draggable="true">{song}</div>' for song in group])}
-            </div>
-            <script>
-                const items = document.querySelectorAll('.item');
-                items.forEach(item => {{
-                    item.addEventListener('dragstart', () => {{
-                        setTimeout(() => item.classList.add('dragging'), 0);
-                    }});
-                    item.addEventListener('dragend', () => item.classList.remove('dragging'));
+        # Use a drag-and-drop HTML widget
+        html_content = f"""
+        <div id="sortable-list">
+            {''.join([f'<div class="item" draggable="true">{song}</div>' for song in group])}
+        </div>
+        <script>
+            const items = document.querySelectorAll('.item');
+            items.forEach(item => {{
+                item.addEventListener('dragstart', () => {{
+                    setTimeout(() => item.classList.add('dragging'), 0);
                 }});
-                const list = document.querySelector('#sortable-list');
-                list.addEventListener('dragover', e => {{
-                    e.preventDefault();
-                    const dragging = document.querySelector('.dragging');
-                    const afterElement = getDragAfterElement(list, e.clientY);
-                    if (afterElement == null) {{
-                        list.appendChild(dragging);
-                    }} else {{
-                        list.insertBefore(dragging, afterElement);
-                    }}
-                }});
-                function getDragAfterElement(container, y) {{
-                    const draggableElements = [...container.querySelectorAll('.item:not(.dragging)')];
-                    return draggableElements.reduce((closest, child) => {{
-                        const box = child.getBoundingClientRect();
-                        const offset = y - box.top - box.height / 2;
-                        if (offset < 0 && offset > closest.offset) {{
-                            return {{ offset: offset, element: child }};
-                        }} else {{
-                            return closest;
-                        }}
-                    }}, {{ offset: Number.NEGATIVE_INFINITY }}).element;
+                item.addEventListener('dragend', () => item.classList.remove('dragging'));
+            }});
+            const list = document.querySelector('#sortable-list');
+            list.addEventListener('dragover', e => {{
+                e.preventDefault();
+                const dragging = document.querySelector('.dragging');
+                const afterElement = getDragAfterElement(list, e.clientY);
+                if (afterElement == null) {{
+                    list.appendChild(dragging);
+                }} else {{
+                    list.insertBefore(dragging, afterElement);
                 }}
-            </script>
-            """
-            st.components.v1.html(html_content, height=300)
-            
-            # Get ranked order from user input
-            ranked_group = st.text_input("Enter the ranked order of songs (comma-separated):", value=",".join(group))
-            ranked_group = [song.strip() for song in ranked_group.split(",") if song.strip()]
-            
-            # Update scores using Borda count
-            for i, song in enumerate(ranked_group):
-                scores[song] += (group_size - i)  # Higher rank = more points
-            
-            # Track score changes for uncertainty calculation
-            for song in group:
-                history[song].append(scores[song])
+            }});
+            function getDragAfterElement(container, y) {{
+                const draggableElements = [...container.querySelectorAll('.item:not(.dragging)')];
+                return draggableElements.reduce((closest, child) => {{
+                    const box = child.getBoundingClientRect();
+                    const offset = y - box.top - box.height / 2;
+                    if (offset < 0 && offset > closest.offset) {{
+                        return {{ offset: offset, element: child }};
+                    }} else {{
+                        return closest;
+                    }}
+                }}, {{ offset: Number.NEGATIVE_INFINITY }}).element;
+            }}
+        </script>
+        """
+        st.components.v1.html(html_content, height=300)
         
-        # Update uncertainties based on score variance
-        for song in songs:
-            if len(history[song]) > 1:
-                uncertainties[song] = statistics.variance(history[song])
-            else:
-                uncertainties[song] = float('inf')
+        # Get ranked order from user input
+        ranked_group = st.text_input(f"Enter the ranked order of songs (comma-separated):", value=",".join(group))
+        ranked_group = [song.strip() for song in ranked_group.split(",") if song.strip()]
         
-        # Check confidence threshold
-        avg_confidence = sum(1 / (uncertainties[song] + 1e-6) for song in songs) / len(songs)
-        st.write(f"Round {round_num + 1}: Average Confidence = {avg_confidence:.2f}")
-        if avg_confidence >= confidence_threshold:
-            st.write(f"Stopping early at round {round_num + 1} due to high confidence.")
-            break
+        # Update scores using Borda count
+        for i, song in enumerate(ranked_group):
+            st.session_state.scores[song] += (group_size - i)  # Higher rank = more points
+        
+        # Track score changes for uncertainty calculation
+        for song in group:
+            st.session_state.history[song].append(st.session_state.scores[song])
     
-    # Final ranking based on scores
-    final_ranking = sorted(scores.keys(), key=lambda x: scores[x], reverse=True)
-    return final_ranking, scores, uncertainties
+    # Update uncertainties based on score variance
+    for song in songs:
+        if len(st.session_state.history[song]) > 1:
+            st.session_state.uncertainties[song] = statistics.variance(st.session_state.history[song])
+        else:
+            st.session_state.uncertainties[song] = float('inf')
+    
+    # Check confidence threshold
+    avg_confidence = sum(1 / (st.session_state.uncertainties[song] + 1e-6) for song in songs) / len(songs)
+    st.write(f"Round {st.session_state.round_num + 1}: Average Confidence = {avg_confidence:.2f}")
+    if avg_confidence >= confidence_threshold:
+        st.write(f"Stopping early at round {st.session_state.round_num + 1} due to high confidence.")
+        st.session_state.final_ranking = sorted(st.session_state.scores.keys(), key=lambda x: st.session_state.scores[x], reverse=True)
+        return st.session_state.final_ranking
+    
+    # Increment round number
+    st.session_state.round_num += 1
+    return None
 
 # Streamlit App
 def main():
@@ -135,20 +152,29 @@ def main():
     
     # Start ranking process
     if st.button("Start Ranking"):
+        st.session_state.round_num = 0
+        st.session_state.final_ranking = None
+        st.session_state.scores = {song: 0 for song in songs}
+        st.session_state.uncertainties = {song: float('inf') for song in songs}
+        st.session_state.history = {song: [] for song in songs}
         st.write("Let's get started! Please rank the songs in each group.")
-        
-        # Run the ranking algorithm
-        ranking, scores, uncertainties = small_batch_ranking(
+    
+    # Run the ranking algorithm
+    if st.session_state.final_ranking is None and st.session_state.round_num < 20:
+        final_ranking = small_batch_ranking(
             songs,
             group_size=group_size,
             max_rounds=20,
             confidence_threshold=0.9
         )
-        
-        if ranking:
-            st.write("\n🎉 **Final Ranking:** 🎉")
-            for i, song in enumerate(ranking, start=1):
-                st.write(f"{i}. {song} (Score: {scores[song]:.2f}, Uncertainty: {uncertainties[song]:.2f})")
+        if final_ranking:
+            st.session_state.final_ranking = final_ranking
+    
+    # Display final results
+    if st.session_state.final_ranking:
+        st.write("\n🎉 **Final Ranking:** 🎉")
+        for i, song in enumerate(st.session_state.final_ranking, start=1):
+            st.write(f"{i}. {song} (Score: {st.session_state.scores[song]:.2f}, Uncertainty: {st.session_state.uncertainties[song]:.2f})")
 
 if __name__ == "__main__":
     main()
