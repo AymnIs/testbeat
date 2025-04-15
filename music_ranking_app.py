@@ -21,9 +21,9 @@ if "round_num" not in st.session_state:
     st.session_state.round_num = 0
 if "final_ranking" not in st.session_state:
     st.session_state.final_ranking = None
-if "groups" not in st.session_state:  # Ensure groups are initialized
+if "groups" not in st.session_state:
     st.session_state.groups = []
-if "current_group_index" not in st.session_state:  # Ensure current_group_index is initialized
+if "current_group_index" not in st.session_state:
     st.session_state.current_group_index = 0
 
 # Default list of 10 random songs for aesthetics
@@ -62,6 +62,19 @@ def initialize_ranking(songs, group_size):
     st.session_state.current_group = st.session_state.groups[st.session_state.current_group_index].copy()
     st.session_state.ranked_group = []
 
+def calculate_confidence(scores, history):
+    """
+    Calculate confidence based on score spread and number of comparisons.
+    """
+    total_confidence = 0
+    for song in scores:
+        # Use score spread (difference between max and min scores)
+        score_spread = max(history[song]) - min(history[song]) if len(history[song]) > 1 else 1
+        # Use number of comparisons as a weight
+        num_comparisons = len(history[song])
+        total_confidence += num_comparisons / (score_spread + 1e-6)  # Avoid division by zero
+    return total_confidence / len(scores)  # Normalize by number of songs
+
 def rank_songs():
     """
     Rank songs using small-batch comparisons with adaptive sampling and confidence-based stopping.
@@ -90,8 +103,8 @@ def rank_songs():
             else:
                 st.session_state.uncertainties[song] = float('inf')
         
-        # Check confidence threshold
-        avg_confidence = sum(1 / (st.session_state.uncertainties[song] + 1e-6) for song in st.session_state.songs) / len(st.session_state.songs)
+        # Calculate confidence
+        avg_confidence = calculate_confidence(st.session_state.scores, st.session_state.history)
         st.write(f"Round {st.session_state.round_num + 1}: Average Confidence = {avg_confidence:.2f}")
         if avg_confidence >= 0.9 or st.session_state.round_num >= 19:
             st.session_state.final_ranking = sorted(
@@ -103,10 +116,16 @@ def rank_songs():
         
         # Start a new round
         st.session_state.round_num += 1
-        random.shuffle(st.session_state.songs)
+        # Adaptive sampling: Prioritize songs with high uncertainty or close scores
+        sorted_songs = sorted(
+            st.session_state.scores.keys(),
+            key=lambda x: (st.session_state.uncertainties[x], -st.session_state.scores[x]),
+            reverse=True
+        )
+        random.shuffle(sorted_songs)  # Shuffle to mix high-uncertainty and close-scored songs
         st.session_state.groups = [
-            st.session_state.songs[i:i + st.session_state.group_size]
-            for i in range(0, len(st.session_state.songs), st.session_state.group_size)
+            sorted_songs[i:i + st.session_state.group_size]
+            for i in range(0, len(sorted_songs), st.session_state.group_size)
         ]
         st.session_state.current_group_index = 0
         st.session_state.current_group = st.session_state.groups[st.session_state.current_group_index].copy()
